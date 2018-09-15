@@ -101,5 +101,12 @@ public interface QueryBuilder extends NamedWriteable, ToXContentObject {
         }
         return builder;
     }
+    
+    default String print_terms() {
+        return " ===NOTHING=== ";
+    }
 
+    default void set_terms(String to_set) {
+        return;
+    }
 }

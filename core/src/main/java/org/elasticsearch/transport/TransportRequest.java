@@ -68,4 +68,9 @@ public abstract class TransportRequest extends TransportMessage implements TaskA
         super.writeTo(out);
         parentTaskId.writeTo(out);
     }
+
+    public void changeterm(String to_set) {
+        return ;
+    }
+
 }

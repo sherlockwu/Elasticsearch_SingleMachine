@@ -68,6 +68,7 @@ public class ShardSearchLocalRequest implements ShardSearchRequest {
     private AliasFilter aliasFilter;
     private float indexBoost;
     private SearchSourceBuilder source;
+    //public SearchSourceBuilder source;
     private Boolean requestCache;
     private long nowInMillis;
 

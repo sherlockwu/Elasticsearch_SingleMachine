@@ -251,7 +251,7 @@ public class Node implements Closeable {
         {
             // use temp logger just to say we are starting. we can't use it later on because the node name might not be set
             Logger logger = Loggers.getLogger(Node.class, NODE_NAME_SETTING.get(environment.settings()));
-            logger.info("initializing ...");
+            logger.info("initializing LOCAL NODE TEST...");
 
         }
         try {

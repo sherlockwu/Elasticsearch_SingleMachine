@@ -624,6 +624,16 @@ public class TransportService extends AbstractLifecycleComponent {
     }
 
     private void sendLocalRequest(long requestId, final String action, final TransportRequest request, TransportRequestOptions options) {
+        /*System.out.println("========= DO I GET HERE FREQUENTLY?????????");
+
+        System.out.println("Printing stack trace:");
+        StackTraceElement[] elements = Thread.currentThread().getStackTrace();
+        for (int i = 1; i < elements.length; i++) {
+            StackTraceElement s = elements[i];
+            System.out.println("\tat " + s.getClassName() + "." + s.getMethodName() + "(" + s.getFileName() + ":" + s.getLineNumber() + ")");
+        }*/
+
+
         final DirectResponseChannel channel = new DirectResponseChannel(logger, localNode, action, requestId, adapter, threadPool);
         try {
             adapter.onRequestSent(localNode, requestId, action, request, options);
@@ -637,6 +647,39 @@ public class TransportService extends AbstractLifecycleComponent {
                 //noinspection unchecked
                 reg.processMessageReceived(request, channel);
             } else {
+
+                // request factory??????
+                
+
+                threadPool.executor(executor).execute(new AbstractRunnable() {
+                    @Override
+                    protected void doRun() throws Exception {
+                        //noinspection unchecked
+                        reg.processMessageReceived(request, channel);
+                        request.changeterm("hello world");
+                        reg.processMessageReceived(request, channel);
+                        request.changeterm("kan wu");
+                        reg.processMessageReceived(request, channel);
+                    }
+
+                    @Override
+                    public boolean isForceExecution() {
+                        return reg.isForceExecution();
+                    }
+
+                    @Override
+                    public void onFailure(Exception e) {
+                        try {
+                            channel.sendResponse(e);
+                        } catch (Exception inner) {
+                            inner.addSuppressed(e);
+                            logger.warn(
+                                (Supplier<?>) () -> new ParameterizedMessage(
+                                    "failed to notify channel of error message for action [{}]", action), inner);
+                        }
+                    }
+                });
+                /*
                 threadPool.executor(executor).execute(new AbstractRunnable() {
                     @Override
                     protected void doRun() throws Exception {
@@ -660,7 +703,7 @@ public class TransportService extends AbstractLifecycleComponent {
                                     "failed to notify channel of error message for action [{}]", action), inner);
                         }
                     }
-                });
+                });*/
             }
 
         } catch (Exception e) {
@@ -807,8 +850,8 @@ public class TransportService extends AbstractLifecycleComponent {
         @Override
         public TransportResponseHandler onResponseReceived(final long requestId) {
             RequestHolder holder = clientHandlers.remove(requestId);
-
             if (holder == null) {
+                System.out.println("Is it because of here?");
                 checkForTimeout(requestId);
                 return null;
             }

@@ -167,7 +167,7 @@ public class SearchService extends AbstractLifecycleComponent implements IndexEv
         this.defaultKeepAlive = DEFAULT_KEEPALIVE_SETTING.get(settings).millis();
 
         this.keepAliveReaper = threadPool.scheduleWithFixedDelay(new Reaper(), keepAliveInterval, Names.SAME);
-
+        System.out.println("================ CREATED A NEW SEARCH SERVICE ================");
         defaultSearchTimeout = DEFAULT_SEARCH_TIMEOUT_SETTING.get(settings);
         clusterService.getClusterSettings().addSettingsUpdateConsumer(DEFAULT_SEARCH_TIMEOUT_SETTING, this::setDefaultSearchTimeout);
 
@@ -254,6 +254,14 @@ public class SearchService extends AbstractLifecycleComponent implements IndexEv
     }
 
     public SearchPhaseResult executeQueryPhase(ShardSearchRequest request, SearchTask task) throws IOException {
+        /*System.out.println("================ GET HERE TO EXECUTE QUERY PHASE");
+
+        System.out.println("Printing stack trace:");
+        StackTraceElement[] elements = Thread.currentThread().getStackTrace();
+        for (int i = 1; i < elements.length; i++) {
+            StackTraceElement s = elements[i];
+            System.out.println("\tat " + s.getClassName() + "." + s.getMethodName() + "(" + s.getFileName() + ":" + s.getLineNumber() + ")");
+        }*/
         final SearchContext context = createAndPutContext(request);
         final SearchOperationListener operationListener = context.indexShard().getSearchOperationListener();
         context.incRef();

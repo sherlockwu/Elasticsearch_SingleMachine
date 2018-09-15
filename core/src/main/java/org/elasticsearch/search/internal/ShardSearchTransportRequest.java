@@ -64,6 +64,9 @@ public class ShardSearchTransportRequest extends TransportRequest implements Sha
         shardSearchLocalRequest.setSearchType(searchType);
     }
 
+    
+
+
     @Override
     public String[] indices() {
         if (originalIndices == null) {
@@ -185,5 +188,12 @@ public class ShardSearchTransportRequest extends TransportRequest implements Sha
     @Override
     public String getClusterAlias() {
         return shardSearchLocalRequest.getClusterAlias();
+    }
+    
+    @Override
+    public void changeterm(String to_change) {
+        //System.out.println("type of query: " + shardSearchLocalRequest.source().query().print_terms());
+        shardSearchLocalRequest.source().query().set_terms(to_change);
+        return ;
     }
 }

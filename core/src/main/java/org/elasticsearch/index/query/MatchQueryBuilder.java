@@ -71,7 +71,8 @@ public class MatchQueryBuilder extends AbstractQueryBuilder<MatchQueryBuilder> {
 
     private final String fieldName;
 
-    private final Object value;
+    //public final Object value;
+    public Object value;
 
     @Deprecated
     private MatchQuery.Type type = DEFAULT_TYPE;
@@ -618,5 +619,13 @@ public class MatchQueryBuilder extends AbstractQueryBuilder<MatchQueryBuilder> {
         matchQuery.boost(boost);
         return Optional.of(matchQuery);
     }
-
+    
+    public String print_terms() {
+        return value.toString();
+    }
+    
+    public void set_terms(String to_set) {
+        value = to_set;
+        return ;
+    }
 }
