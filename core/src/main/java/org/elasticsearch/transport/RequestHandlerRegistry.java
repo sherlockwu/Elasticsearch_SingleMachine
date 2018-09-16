@@ -59,10 +59,6 @@ public class RequestHandlerRegistry<Request extends TransportRequest> {
             return requestFactory.get();
     }
 
-    public String next_request() {
-            return "hello world";
-    }
-
     public void processMessageReceived(Request request, TransportChannel channel) throws Exception {
         //System.out.println("============== start to process =============");
         // create one request
@@ -70,8 +66,13 @@ public class RequestHandlerRegistry<Request extends TransportRequest> {
         //System.out.println("====== query type: " + ((ShardSearchTransportRequest)request).source().query().getClass().getName());
 
         //TODO check task ???????????????
+        /*if (request.getClass().getName().contains("ShardSearchTransportRequest")) {
+            handler.messageReceived(request, channel);
+            return;
+        }*/
 
         final Task task = taskManager.register(channel.getChannelType(), action, request);
+
         if (task == null) {
             handler.messageReceived(request, channel);
         } else {
@@ -79,9 +80,12 @@ public class RequestHandlerRegistry<Request extends TransportRequest> {
             try {
                 handler.messageReceived(request, new TransportChannelWrapper(taskManager, task, channel), task);
                 success = true;
+                if (request.getClass().getName().contains("ShardSearchTransportRequest")) {
+                    taskManager.unregister(task);
+                }
             } finally {
                 if (success == false) {
-                    System.out.println("!!!!! Falied the task");
+                    System.out.println("!!!!! Faliled the task");
                     taskManager.unregister(task);
                 }
             }

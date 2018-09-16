@@ -635,8 +635,9 @@ public class TransportService extends AbstractLifecycleComponent {
 
     
     private Vector<String> request_pool = new Vector<String>();
-    AtomicInteger atomic_count = new AtomicInteger(-1);
+    AtomicInteger atomic_count = new AtomicInteger(0);
     AtomicInteger atomic_finished = new AtomicInteger(0);
+    AtomicInteger atomic_ongoing = new AtomicInteger(0);
 
     private void load_query_log(String path) {
         System.out.println("loading query log===============");
@@ -683,16 +684,15 @@ public class TransportService extends AbstractLifecycleComponent {
                 if (request.getterms().contains("KANWU")) {
 
                     // TO SET
-                    String query_path = "/mnt/ssd/query_log/wiki/single_term/type_single.docfreq_low.workloadOrig_wiki";
+                    String query_path = "/mnt/ssd/query_log/es_local_querylog";
                     load_query_log(query_path);
                     System.out.println("============== Query Log Loaded " + requestId);
 
-                int cur_index = atomic_count.getAndAdd(1);
+                    int cur_index = atomic_count.getAndAdd(1);
                 
 
-                // for copy request
+                    // for copy request
 
-                    /* 
                     BytesStreamOutput output = new BytesStreamOutput();
                     request.writeTo(output);
                    
@@ -708,46 +708,29 @@ public class TransportService extends AbstractLifecycleComponent {
 
                     //done
                     NamedWriteableRegistry namedWriteableRegistry = new NamedWriteableRegistry(entries);
-                    StreamInput in = new NamedWriteableAwareStreamInput(output.bytes().streamInput(), namedWriteableRegistry);
-		    */
+                    //StreamInput in = new NamedWriteableAwareStreamInput(output.bytes().streamInput(), namedWriteableRegistry);
 
-
+// First version: executor based
                 while (cur_index < request_pool.size()) {
                     //System.out.println("====== handling " + cur_index);
-                    BytesStreamOutput output = new BytesStreamOutput();
-                    request.writeTo(output);
-                   
-                    //SearchModule searchModule = new SearchModule(settings, false, localNode.pluginsService.filterPlugins(SearchPlugin.class));
-                    IndicesModule indicesModule = new IndicesModule(Collections.emptyList());
-                    //SearchModule searchModule = new SearchModule(Settings.EMPTY, false, Collections.singletonList(searchExtPlugin));
-                    SearchModule searchModule = new SearchModule(Settings.EMPTY, false, Collections.emptyList());
 
-                    // done
-                    List<NamedWriteableRegistry.Entry> entries = new ArrayList<>();
-                    entries.addAll(indicesModule.getNamedWriteables());
-                    entries.addAll(searchModule.getNamedWriteables());
-
-                    //done
-                    NamedWriteableRegistry namedWriteableRegistry = new NamedWriteableRegistry(entries);
-                    StreamInput in = new NamedWriteableAwareStreamInput(output.bytes().streamInput(), namedWriteableRegistry);
-                    
                     ShardSearchTransportRequest request_cur_thread = new ShardSearchTransportRequest();
+                    StreamInput in = new NamedWriteableAwareStreamInput(output.bytes().streamInput(), namedWriteableRegistry);
                     request_cur_thread.readFrom(in);
-                    //*/
                     
-                    //TransportRequest request_cur_thread = request;
-                    if (cur_index == -1) {
-                    } else {
-                        request_cur_thread.changeterm(request_pool.get(cur_index));
-                    }
-                     
+                    request_cur_thread.changeterm(request_pool.get(cur_index));
+
+                    while (atomic_ongoing.get() > 100) ;
+
+                    atomic_ongoing.addAndGet(1);
+                    
                     threadPool.executor(executor).execute(new AbstractRunnable() {
                     @Override
                     protected void doRun() throws Exception {
                         reg.processMessageReceived(request_cur_thread, channel);
                         int finished = atomic_finished.addAndGet(1);
+                        atomic_ongoing.decrementAndGet();
                         if (finished == request_pool.size()) {
-                        //if (finished == 1) {
                             request_cur_thread.changeterm("KANWU");
                             reg.processMessageReceived(request_cur_thread, channel);
                         }
@@ -770,42 +753,21 @@ public class TransportService extends AbstractLifecycleComponent {
                         }
                     }
                     });
+                    
                     cur_index = atomic_count.getAndAdd(1);
 
-                    if (cur_index == 0) {
-                        for (int j = 0; j < 100000; j++) ;
-                    }
                 }
-
-
-                //int NUM_THREADS = 16;
-                //for (int i = 0 ; i < NUM_THREADS; i+= 1) {
+/*
+// Second Version: each executor is like a thread
+                int NUM_THREADS = 16;
+                for (int i = 0 ; i < NUM_THREADS; i+= 1) {
 
                     // need to deep copy the request object for each thread/executor
                     // in your override doExecute method, add this:
-                    /* 
-                    BytesStreamOutput output = new BytesStreamOutput();
-                    request.writeTo(output);
-                   
-                    // how to get this????
-                    //SearchModule searchModule = new SearchModule(settings, false, localNode.pluginsService.filterPlugins(SearchPlugin.class));
-                    IndicesModule indicesModule = new IndicesModule(Collections.emptyList());
-                    //SearchModule searchModule = new SearchModule(Settings.EMPTY, false, Collections.singletonList(searchExtPlugin));
-                    SearchModule searchModule = new SearchModule(Settings.EMPTY, false, Collections.emptyList());
-
-                    // done
-                    List<NamedWriteableRegistry.Entry> entries = new ArrayList<>();
-                    entries.addAll(indicesModule.getNamedWriteables());
-                    entries.addAll(searchModule.getNamedWriteables());
-
-                    //done
-                    NamedWriteableRegistry namedWriteableRegistry = new NamedWriteableRegistry(entries);
-                    StreamInput in = new NamedWriteableAwareStreamInput(output.bytes().streamInput(), namedWriteableRegistry);
-
+                    
                     ShardSearchTransportRequest request_cur_thread = new ShardSearchTransportRequest();
+                    StreamInput in = new NamedWriteableAwareStreamInput(output.bytes().streamInput(), namedWriteableRegistry);
                     request_cur_thread.readFrom(in);
-                    */
-/*                    TransportRequest request_cur_thread = request;
 
                     threadPool.executor(executor).execute(new AbstractRunnable() {
                     @Override
@@ -816,9 +778,9 @@ public class TransportService extends AbstractLifecycleComponent {
                             //System.out.println("=== handling " + request_pool.get(cur_index) + " index: " + cur_index);
                             request_cur_thread.changeterm(request_pool.get(cur_index));
                             reg.processMessageReceived(request_cur_thread, channel);
-
-                            if (cur_index == request_pool.size() - 1) {
-                                for (int j = 1; j <= 1000; j++) ;
+                        
+                            int finished = atomic_finished.addAndGet(1);
+                            if (finished == request_pool.size()) {
                                 request_cur_thread.changeterm("KANWU");
                                 reg.processMessageReceived(request_cur_thread, channel);
                             }
@@ -844,10 +806,9 @@ public class TransportService extends AbstractLifecycleComponent {
                         }
                     }
                 });
-                }    // threads end
-
-*/
-
+                }
+*/              
+// End of second version
 
                 } else {
                  
