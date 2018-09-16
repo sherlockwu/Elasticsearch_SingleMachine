@@ -32,6 +32,7 @@ import org.elasticsearch.common.collect.MapBuilder;
 import org.elasticsearch.common.component.AbstractLifecycleComponent;
 import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.common.io.stream.StreamOutput;
+import org.elasticsearch.common.io.stream.*;
 import org.elasticsearch.common.logging.Loggers;
 import org.elasticsearch.common.metrics.MeanMetric;
 import org.elasticsearch.common.regex.Regex;
@@ -52,11 +53,18 @@ import org.elasticsearch.tasks.TaskCancelledException;
 import org.elasticsearch.tasks.TaskManager;
 import org.elasticsearch.threadpool.ThreadPool;
 
+import org.elasticsearch.search.internal.ShardSearchTransportRequest;
+import org.elasticsearch.indices.IndicesModule;
+import org.elasticsearch.search.SearchModule;
+
 import java.io.IOException;
+import java.io.*;
 import java.net.UnknownHostException;
 import java.util.Arrays;
+import java.util.Vector;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -67,6 +75,8 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
+import java.util.concurrent.atomic.AtomicInteger;
+
 
 import static java.util.Collections.emptyList;
 import static org.elasticsearch.common.settings.Setting.listSetting;
@@ -623,6 +633,28 @@ public class TransportService extends AbstractLifecycleComponent {
         }
     }
 
+    
+    private Vector<String> request_pool = new Vector<String>();
+    AtomicInteger atomic_count = new AtomicInteger(0);
+    AtomicInteger atomic_finished = new AtomicInteger(0);
+
+    private void load_query_log(String path) {
+        System.out.println("loading query log===============");
+        try(BufferedReader br = new BufferedReader(new FileReader(path))) {
+            String line = br.readLine();
+
+            while (line != null) {
+                request_pool.add(line);
+                //System.out.println(line);
+                line = br.readLine();
+            }
+        } catch (IOException ex){
+            System.out.println("!!!!!!!!!!!!!!!!!!!! Query Log Doesnt Found !!!!!!!!!!!!!!!!!!");
+        } 
+
+        return;
+    }
+
     private void sendLocalRequest(long requestId, final String action, final TransportRequest request, TransportRequestOptions options) {
         /*System.out.println("========= DO I GET HERE FREQUENTLY?????????");
 
@@ -632,7 +664,6 @@ public class TransportService extends AbstractLifecycleComponent {
             StackTraceElement s = elements[i];
             System.out.println("\tat " + s.getClassName() + "." + s.getMethodName() + "(" + s.getFileName() + ":" + s.getLineNumber() + ")");
         }*/
-
 
         final DirectResponseChannel channel = new DirectResponseChannel(logger, localNode, action, requestId, adapter, threadPool);
         try {
@@ -648,17 +679,131 @@ public class TransportService extends AbstractLifecycleComponent {
                 reg.processMessageReceived(request, channel);
             } else {
 
-                // request factory??????
-                
+                // indicate to do benchmark
+                if (request.getterms().contains("KANWU")) {
 
+                    // TO SET
+                    String query_path = "/mnt/ssd/query_log/wiki/single_term/type_single.docfreq_low.workloadOrig_wiki";
+                    load_query_log(query_path);
+                    System.out.println("============== Query Log Loaded " + requestId);
+
+                int cur_index = atomic_count.getAndAdd(1);
+                while (cur_index < request_pool.size()) {
+                    System.out.println("====== handling " + cur_index);
+                    TransportRequest request_cur_thread = request;
+                    request_cur_thread.changeterm(request_pool.get(cur_index));
+
+                    threadPool.executor(executor).execute(new AbstractRunnable() {
+                    @Override
+                    protected void doRun() throws Exception {
+                        reg.processMessageReceived(request_cur_thread, channel);
+                        int finished = atomic_finished.addAndGet(1);
+                        //if (finished == request_pool.size()) {
+                        if (finished == 1) {
+                            request_cur_thread.changeterm("KANWU");
+                            reg.processMessageReceived(request_cur_thread, channel);
+                        }
+                    }
+
+                    @Override
+                    public boolean isForceExecution() {
+                        return reg.isForceExecution();
+                    }
+
+                    @Override
+                    public void onFailure(Exception e) {
+                        try {
+                            channel.sendResponse(e);
+                        } catch (Exception inner) {
+                            inner.addSuppressed(e);
+                            logger.warn(
+                                (Supplier<?>) () -> new ParameterizedMessage(
+                                    "failed to notify channel of error message for action [{}]", action), inner);
+                        }
+                    }
+                    });
+                    
+                    cur_index = atomic_count.getAndAdd(1);
+                }
+
+
+                //int NUM_THREADS = 16;
+                //for (int i = 0 ; i < NUM_THREADS; i+= 1) {
+
+                    // need to deep copy the request object for each thread/executor
+                    // in your override doExecute method, add this:
+                    /* 
+                    BytesStreamOutput output = new BytesStreamOutput();
+                    request.writeTo(output);
+                   
+                    // how to get this????
+                    //SearchModule searchModule = new SearchModule(settings, false, localNode.pluginsService.filterPlugins(SearchPlugin.class));
+                    IndicesModule indicesModule = new IndicesModule(Collections.emptyList());
+                    //SearchModule searchModule = new SearchModule(Settings.EMPTY, false, Collections.singletonList(searchExtPlugin));
+                    SearchModule searchModule = new SearchModule(Settings.EMPTY, false, Collections.emptyList());
+
+                    // done
+                    List<NamedWriteableRegistry.Entry> entries = new ArrayList<>();
+                    entries.addAll(indicesModule.getNamedWriteables());
+                    entries.addAll(searchModule.getNamedWriteables());
+
+                    //done
+                    NamedWriteableRegistry namedWriteableRegistry = new NamedWriteableRegistry(entries);
+                    StreamInput in = new NamedWriteableAwareStreamInput(output.bytes().streamInput(), namedWriteableRegistry);
+
+                    ShardSearchTransportRequest request_cur_thread = new ShardSearchTransportRequest();
+                    request_cur_thread.readFrom(in);
+                    */
+/*                    TransportRequest request_cur_thread = request;
+
+                    threadPool.executor(executor).execute(new AbstractRunnable() {
+                    @Override
+                    protected void doRun() throws Exception {
+                        //noinspection unchecked
+                        int cur_index = atomic_count.getAndAdd(1);
+                        while (cur_index < request_pool.size()) {
+                            //System.out.println("=== handling " + request_pool.get(cur_index) + " index: " + cur_index);
+                            request_cur_thread.changeterm(request_pool.get(cur_index));
+                            reg.processMessageReceived(request_cur_thread, channel);
+
+                            if (cur_index == request_pool.size() - 1) {
+                                for (int j = 1; j <= 1000; j++) ;
+                                request_cur_thread.changeterm("KANWU");
+                                reg.processMessageReceived(request_cur_thread, channel);
+                            }
+
+                            cur_index = atomic_count.getAndAdd(1);
+                        }
+                    }
+
+                    @Override
+                    public boolean isForceExecution() {
+                        return reg.isForceExecution();
+                    }
+
+                    @Override
+                    public void onFailure(Exception e) {
+                        try {
+                            channel.sendResponse(e);
+                        } catch (Exception inner) {
+                            inner.addSuppressed(e);
+                            logger.warn(
+                                (Supplier<?>) () -> new ParameterizedMessage(
+                                    "failed to notify channel of error message for action [{}]", action), inner);
+                        }
+                    }
+                });
+                }    // threads end
+
+*/
+
+
+                } else {
+                 
                 threadPool.executor(executor).execute(new AbstractRunnable() {
                     @Override
                     protected void doRun() throws Exception {
                         //noinspection unchecked
-                        reg.processMessageReceived(request, channel);
-                        request.changeterm("hello world");
-                        reg.processMessageReceived(request, channel);
-                        request.changeterm("kan wu");
                         reg.processMessageReceived(request, channel);
                     }
 
@@ -679,31 +824,7 @@ public class TransportService extends AbstractLifecycleComponent {
                         }
                     }
                 });
-                /*
-                threadPool.executor(executor).execute(new AbstractRunnable() {
-                    @Override
-                    protected void doRun() throws Exception {
-                        //noinspection unchecked
-                        reg.processMessageReceived(request, channel);
-                    }
-
-                    @Override
-                    public boolean isForceExecution() {
-                        return reg.isForceExecution();
-                    }
-
-                    @Override
-                    public void onFailure(Exception e) {
-                        try {
-                            channel.sendResponse(e);
-                        } catch (Exception inner) {
-                            inner.addSuppressed(e);
-                            logger.warn(
-                                (Supplier<?>) () -> new ParameterizedMessage(
-                                    "failed to notify channel of error message for action [{}]", action), inner);
-                        }
-                    }
-                });*/
+                }
             }
 
         } catch (Exception e) {

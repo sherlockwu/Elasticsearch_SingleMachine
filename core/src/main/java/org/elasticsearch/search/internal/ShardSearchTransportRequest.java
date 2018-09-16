@@ -196,4 +196,9 @@ public class ShardSearchTransportRequest extends TransportRequest implements Sha
         shardSearchLocalRequest.source().query().set_terms(to_change);
         return ;
     }
+
+    @Override
+    public String getterms() {
+        return shardSearchLocalRequest.source().query().print_terms();
+    }
 }

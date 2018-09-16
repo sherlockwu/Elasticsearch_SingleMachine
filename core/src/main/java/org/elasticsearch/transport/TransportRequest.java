@@ -72,5 +72,9 @@ public abstract class TransportRequest extends TransportMessage implements TaskA
     public void changeterm(String to_set) {
         return ;
     }
+    
+    public String getterms() {
+        return "NOTHING";
+    }
 
 }
