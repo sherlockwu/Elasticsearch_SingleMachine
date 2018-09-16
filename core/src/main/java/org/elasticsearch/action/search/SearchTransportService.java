@@ -342,8 +342,8 @@ public class SearchTransportService extends AbstractComponent {
                 public void messageReceived(ShardSearchTransportRequest request, TransportChannel channel, Task task) throws Exception {
                     //System.out.println("====== message received: " + request.source().query().getClass().getName());
                     SearchPhaseResult result = searchService.executeQueryPhase(request, (SearchTask)task);
-                    //System.out.println("======== finished query: " + request.source().query().print_terms()  + " , result: " + result.getClass().getName() + " : " + result.queryResult().getTotalHits());
-                    if (request.source().query().print_terms() == "KANWU")
+                    System.out.println("======== finished query: " + request.source().query().print_terms()  + " , result: " + result.getClass().getName() + " : " + result.queryResult().getTotalHits());
+                    if (request.source().query().print_terms().contains("KANWU"))
                         channel.sendResponse(result);
                     //channel.sendResponse(result);
                 }
