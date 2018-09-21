@@ -73,8 +73,16 @@ public abstract class TransportRequest extends TransportMessage implements TaskA
         return ;
     }
     
+    public void changetype(String to_set) {
+        return ;
+    }
+    
     public String getterms() {
         return "NOTHING";
+    }
+    
+    public String gettype() {
+        return "NOTYPE";
     }
 
 }

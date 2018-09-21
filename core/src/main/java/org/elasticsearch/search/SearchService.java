@@ -262,7 +262,9 @@ public class SearchService extends AbstractLifecycleComponent implements IndexEv
             StackTraceElement s = elements[i];
             System.out.println("\tat " + s.getClassName() + "." + s.getMethodName() + "(" + s.getFileName() + ":" + s.getLineNumber() + ")");
         }*/
+                                //long startTime = System.nanoTime();
         final SearchContext context = createAndPutContext(request);
+                                //long endTime1 = System.nanoTime();
         final SearchOperationListener operationListener = context.indexShard().getSearchOperationListener();
         context.incRef();
         boolean queryPhaseSuccess = false;
@@ -283,6 +285,10 @@ public class SearchService extends AbstractLifecycleComponent implements IndexEv
             queryPhaseSuccess = true;
             operationListener.onQueryPhase(context, afterQueryTime - time);
             if (request.numberOfShards() == 1) {
+                                //System.out.printf("%s ===duration1: %f, duration2: %f  \n", request.source().query().print_terms(), (double) duration1/1000000000, (double) duration2/1000000000 );
+                                //long endTime = System.nanoTime();
+                                //long duration = (endTime - startTime);
+                                //System.out.printf("=== preprocess part of executeQueryPhase %s  need %f s  %f s \n", request.source().query().print_terms(),(double)( endTime1 - startTime) /1000000000, (double) duration/1000000000 );
                 return executeFetchPhase(context, operationListener, afterQueryTime);
             }
             return context.queryResult();
@@ -305,6 +311,7 @@ public class SearchService extends AbstractLifecycleComponent implements IndexEv
 
     private QueryFetchSearchResult executeFetchPhase(SearchContext context, SearchOperationListener operationListener,
                                                         long afterQueryTime) {
+                                //long startTime = System.nanoTime();
         operationListener.onPreFetchPhase(context);
         try {
             shortcutDocIdsToLoad(context);
@@ -319,6 +326,9 @@ public class SearchService extends AbstractLifecycleComponent implements IndexEv
             throw ExceptionsHelper.convertToRuntime(e);
         }
         operationListener.onFetchPhase(context, System.nanoTime() - afterQueryTime);
+                                //long endTime = System.nanoTime();
+                                //long duration1 = (endTime - startTime);
+                                //System.out.printf("executeFetchPhase : %f \n", (double) duration1/1000000000);
         return new QueryFetchSearchResult(context.queryResult(), context.fetchResult());
     }
 

@@ -66,13 +66,14 @@ public class RequestHandlerRegistry<Request extends TransportRequest> {
         //System.out.println("====== query type: " + ((ShardSearchTransportRequest)request).source().query().getClass().getName());
 
         //TODO check task ???????????????
-        /*if (request.getClass().getName().contains("ShardSearchTransportRequest")) {
-            handler.messageReceived(request, channel);
-            return;
-        }*/
 
+                                //long startTime = System.nanoTime();
         final Task task = taskManager.register(channel.getChannelType(), action, request);
+                                //long endTime = System.nanoTime();
+                                //long duration = (endTime - startTime);
 
+                                //System.out.printf("=== ProcessmessageReceived at %f for %s \n", (double)System.nanoTime()/1000000000, request.getterms());
+                                //startTime = System.nanoTime();
         if (task == null) {
             handler.messageReceived(request, channel);
         } else {
@@ -90,6 +91,9 @@ public class RequestHandlerRegistry<Request extends TransportRequest> {
                 }
             }
         }
+                                //endTime = System.nanoTime();
+                                //duration = (endTime - startTime);
+                                //System.out.printf("=== messageReceived %s each need %f s \n", request.getterms(), (double) duration/1000000000 );
     }
 
     public boolean isForceExecution() {

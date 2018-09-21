@@ -342,7 +342,15 @@ public class SearchTransportService extends AbstractComponent {
                 public void messageReceived(ShardSearchTransportRequest request, TransportChannel channel, Task task) throws Exception {
                     //return;
                     //System.out.println("====== message received: " + request.source().query().getClass().getName());
+                                //System.out.println("=== messageReceived at " + (double)System.nanoTime()/1000000 + " for " + request.getterms());
+                                //System.out.printf("=== messageReceived at %f for %s \n", (double)System.nanoTime()/1000000000, request.getterms());
+                                //long startTime = System.nanoTime();
                     SearchPhaseResult result = searchService.executeQueryPhase(request, (SearchTask)task);
+                    //QuerySearchResult result = searchService.executeQueryPhase(request, (SearchTask)task);
+                                //long endTime = System.nanoTime();
+                                //long duration = (endTime - startTime);
+                                //System.out.printf("=== execute %s  need %f s \n", request.getterms(), (double) duration/1000000000 );
+                    //SearchPhaseResult result = null; 
                     //System.out.println("======== finished query: " + request.source().query().print_terms()  + " , result: " + result.getClass().getName() + " : " + result.queryResult().getTotalHits());
                     if (request.source().query().print_terms().contains("KANWU"))
                         channel.sendResponse(result);

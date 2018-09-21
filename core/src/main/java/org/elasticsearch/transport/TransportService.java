@@ -638,12 +638,18 @@ public class TransportService extends AbstractLifecycleComponent {
     AtomicInteger atomic_count = new AtomicInteger(0);
     AtomicInteger atomic_finished = new AtomicInteger(0);
     AtomicInteger atomic_ongoing = new AtomicInteger(0);
+    BytesStreamOutput output_phrase = new BytesStreamOutput();
+    BytesStreamOutput output = new BytesStreamOutput();
 
     private void load_query_log(String path) {
+        atomic_count.set(0);
+        atomic_finished.set(0);
+        atomic_ongoing.set(0);
+        if (request_pool.size() > 0)
+            return;
         System.out.println("loading query log===============");
         try(BufferedReader br = new BufferedReader(new FileReader(path))) {
             String line = br.readLine();
-
             while (line != null) {
                 request_pool.add(line);
                 //System.out.println(line);
@@ -682,6 +688,7 @@ public class TransportService extends AbstractLifecycleComponent {
 
                 // indicate to do benchmark
                 if (request.getterms().contains("KANWU")) {
+                    //System.out.println(executor);
 
                     // TO SET
                     String query_path = "/mnt/ssd/query_log/es_local_querylog";
@@ -689,12 +696,13 @@ public class TransportService extends AbstractLifecycleComponent {
                     System.out.println("============== Query Log Loaded " + requestId);
 
                     int cur_index = atomic_count.getAndAdd(1);
-                
+                     
 
                     // for copy request
-
-                    BytesStreamOutput output = new BytesStreamOutput();
                     request.writeTo(output);
+
+                    //BytesStreamOutput output = new BytesStreamOutput();
+                    //request.writeTo(output);
                    
                     //SearchModule searchModule = new SearchModule(settings, false, localNode.pluginsService.filterPlugins(SearchPlugin.class));
                     IndicesModule indicesModule = new IndicesModule(Collections.emptyList());
@@ -711,6 +719,9 @@ public class TransportService extends AbstractLifecycleComponent {
                     //StreamInput in = new NamedWriteableAwareStreamInput(output.bytes().streamInput(), namedWriteableRegistry);
 
 // First version: executor based
+                long startTime = System.nanoTime();
+                //long startTime;
+/*
                 while (cur_index < request_pool.size()) {
                     //System.out.println("====== handling " + cur_index);
 
@@ -720,7 +731,9 @@ public class TransportService extends AbstractLifecycleComponent {
                     
                     request_cur_thread.changeterm(request_pool.get(cur_index));
 
-                    while (atomic_ongoing.get() > 100) ;
+                    while (atomic_ongoing.get() > 1000) {
+                        Thread.sleep(10);
+                    }
 
                     atomic_ongoing.addAndGet(1);
                     
@@ -729,8 +742,15 @@ public class TransportService extends AbstractLifecycleComponent {
                     protected void doRun() throws Exception {
                         reg.processMessageReceived(request_cur_thread, channel);
                         int finished = atomic_finished.addAndGet(1);
+                        if (finished == 1) { 
+                            System.out.println("=== started at " + System.nanoTime());
+                        }
                         atomic_ongoing.decrementAndGet();
                         if (finished == request_pool.size()) {
+                            long endTime = System.nanoTime();
+                            long duration = (endTime - startTime);
+                            System.out.println("=== finished at " + endTime);
+                            System.out.printf("=== finished in %f s \n", (double) duration/1000000000 );
                             request_cur_thread.changeterm("KANWU");
                             reg.processMessageReceived(request_cur_thread, channel);
                         }
@@ -757,10 +777,19 @@ public class TransportService extends AbstractLifecycleComponent {
                     cur_index = atomic_count.getAndAdd(1);
 
                 }
-/*
+
+*/
 // Second Version: each executor is like a thread
-                int NUM_THREADS = 16;
+                int NUM_THREADS = 128;
                 for (int i = 0 ; i < NUM_THREADS; i+= 1) {
+
+
+                    final DirectResponseChannel channel_cur_thread = new DirectResponseChannel(logger, localNode, action, requestId, adapter, threadPool);
+                    //adapter.onRequestSent(localNode, requestId, action, request, options);
+                    //adapter.onRequestReceived(requestId, action);
+                    final RequestHandlerRegistry reg_cur = adapter.getRequestHandler(action);      //TODO is that possible to get queryresult handler?
+                    final String executor_cur = reg_cur.getExecutor();
+
 
                     // need to deep copy the request object for each thread/executor
                     // in your override doExecute method, add this:
@@ -768,21 +797,53 @@ public class TransportService extends AbstractLifecycleComponent {
                     ShardSearchTransportRequest request_cur_thread = new ShardSearchTransportRequest();
                     StreamInput in = new NamedWriteableAwareStreamInput(output.bytes().streamInput(), namedWriteableRegistry);
                     request_cur_thread.readFrom(in);
+                    
+                    ShardSearchTransportRequest request_cur_thread_phrase = new ShardSearchTransportRequest();
+                    StreamInput in_phrase = new NamedWriteableAwareStreamInput(output_phrase.bytes().streamInput(), namedWriteableRegistry);
+                    request_cur_thread_phrase.readFrom(in_phrase);
 
-                    threadPool.executor(executor).execute(new AbstractRunnable() {
+                    // backup to store phrase and and
+
+                    //threadPool.executor(executor).execute(new AbstractRunnable() {
+                    //System.out.println(threadPool.executor(executor_cur).getClass().getName());
+                    threadPool.executor(executor_cur).execute(new AbstractRunnable() {
                     @Override
                     protected void doRun() throws Exception {
                         //noinspection unchecked
                         int cur_index = atomic_count.getAndAdd(1);
                         while (cur_index < request_pool.size()) {
                             //System.out.println("=== handling " + request_pool.get(cur_index) + " index: " + cur_index);
-                            request_cur_thread.changeterm(request_pool.get(cur_index));
-                            reg.processMessageReceived(request_cur_thread, channel);
+                            String this_query = request_pool.get(cur_index);
+                            if (this_query.indexOf('\"') >= 0) {
+                                //System.out.println("This is a phrase query");
+                                String replaceString=this_query.replace('\"',' ');
+                                // change request type
+                                request_cur_thread_phrase.changeterm(replaceString);
+                                reg_cur.processMessageReceived(request_cur_thread_phrase, channel_cur_thread);
+                                
+                            } else {
+                                request_cur_thread.changeterm(this_query);
+                                reg_cur.processMessageReceived(request_cur_thread, channel_cur_thread);
+                                //request_cur_thread.changeterm(request_pool.get(cur_index));
+                            }
+                            //reg.processMessageReceived(request_cur_thread, channel);      //channel?
+                            //reg_cur.processMessageReceived(request_cur_thread, channel);
+                            //reg_cur.processMessageReceived(request_cur_thread, channel_cur_thread);
                         
                             int finished = atomic_finished.addAndGet(1);
-                            if (finished == request_pool.size()) {
+                            if (finished == 1) {
+                                System.out.println("=== started at " + (double)System.nanoTime()/1000000000);
+                            }
+                            //System.out.println("=== finished: " + finished);
+                            if (finished >= request_pool.size()-1) {
+                                long endTime = System.nanoTime();
+                                long duration = (endTime - startTime);
+                                System.out.println("=== finished at " + (double) endTime/1000000000);
+                                System.out.printf("=== finished in %f s \n", (double) duration/1000000000 );
                                 request_cur_thread.changeterm("KANWU");
-                                reg.processMessageReceived(request_cur_thread, channel);
+                                //reg.processMessageReceived(request_cur_thread, channel);
+                                //reg_cur.processMessageReceived(request_cur_thread, channel);   // channel?
+                                reg_cur.processMessageReceived(request_cur_thread, channel_cur_thread);   // channel?
                             }
 
                             cur_index = atomic_count.getAndAdd(1);
@@ -791,13 +852,15 @@ public class TransportService extends AbstractLifecycleComponent {
 
                     @Override
                     public boolean isForceExecution() {
-                        return reg.isForceExecution();
+                        //return reg.isForceExecution();
+                        return reg_cur.isForceExecution();
                     }
 
                     @Override
                     public void onFailure(Exception e) {
                         try {
-                            channel.sendResponse(e);
+                            //channel.sendResponse(e);
+                            channel_cur_thread.sendResponse(e);
                         } catch (Exception inner) {
                             inner.addSuppressed(e);
                             logger.warn(
@@ -807,11 +870,15 @@ public class TransportService extends AbstractLifecycleComponent {
                     }
                 });
                 }
-*/              
+                System.out.println("=========== Finished all work");
 // End of second version
 
                 } else {
-                 
+                    if (request.getterms().contains("PHRASE")) {
+                        request.writeTo(output_phrase);
+                        request.changeterm("KANWU");
+                    }
+ 
                 threadPool.executor(executor).execute(new AbstractRunnable() {
                     @Override
                     protected void doRun() throws Exception {

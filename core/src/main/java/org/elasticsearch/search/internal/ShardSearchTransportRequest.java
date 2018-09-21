@@ -198,7 +198,19 @@ public class ShardSearchTransportRequest extends TransportRequest implements Sha
     }
 
     @Override
+    public void changetype(String to_change) {
+        //TODO System.out.println("type of query: " + shardSearchLocalRequest.source().query().print_terms());
+        shardSearchLocalRequest.source().query().set_terms(to_change);
+        return ;
+    }
+
+    @Override
     public String getterms() {
+        return shardSearchLocalRequest.source().query().print_terms();
+    }
+    
+    @Override
+    public String gettype() {
         return shardSearchLocalRequest.source().query().print_terms();
     }
 }
