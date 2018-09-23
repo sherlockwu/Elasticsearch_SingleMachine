@@ -76,7 +76,7 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 import java.util.concurrent.atomic.AtomicInteger;
-
+import java.util.concurrent.atomic.AtomicIntegerArray;
 
 import static java.util.Collections.emptyList;
 import static org.elasticsearch.common.settings.Setting.listSetting;
@@ -641,6 +641,8 @@ public class TransportService extends AbstractLifecycleComponent {
     BytesStreamOutput output_phrase = new BytesStreamOutput();
     BytesStreamOutput output = new BytesStreamOutput();
 
+    AtomicIntegerArray latency_pool = new AtomicIntegerArray(20000);
+
     private void load_query_log(String path) {
         atomic_count.set(0);
         atomic_finished.set(0);
@@ -814,6 +816,8 @@ public class TransportService extends AbstractLifecycleComponent {
                         while (cur_index < request_pool.size()) {
                             //System.out.println("=== handling " + request_pool.get(cur_index) + " index: " + cur_index);
                             String this_query = request_pool.get(cur_index);
+                            long startTime = System.nanoTime();
+
                             if (this_query.indexOf('\"') >= 0) {
                                 //System.out.println("This is a phrase query");
                                 String replaceString=this_query.replace('\"',' ');
@@ -826,6 +830,9 @@ public class TransportService extends AbstractLifecycleComponent {
                                 reg_cur.processMessageReceived(request_cur_thread, channel_cur_thread);
                                 //request_cur_thread.changeterm(request_pool.get(cur_index));
                             }
+                            long duration = (System.nanoTime() - startTime);
+                            latency_pool.getAndAdd((int)(duration/100000), 1);
+
                             //reg.processMessageReceived(request_cur_thread, channel);      //channel?
                             //reg_cur.processMessageReceived(request_cur_thread, channel);
                             //reg_cur.processMessageReceived(request_cur_thread, channel_cur_thread);
@@ -835,11 +842,25 @@ public class TransportService extends AbstractLifecycleComponent {
                                 System.out.println("=== started at " + (double)System.nanoTime()/1000000000);
                             }
                             //System.out.println("=== finished: " + finished);
-                            if (finished >= request_pool.size()-1) {
+                            if (finished >= request_pool.size() - 1) {
                                 long endTime = System.nanoTime();
-                                long duration = (endTime - startTime);
+                                duration = (endTime - startTime);
                                 System.out.println("=== finished at " + (double) endTime/1000000000);
                                 System.out.printf("=== finished in %f s \n", (double) duration/1000000000 );
+                                //dump the latency pool
+                                for (int i = 0; i <= 10000; i++) {}
+                                int counted = 0;
+                                int n_queries = request_pool.size();
+                                for (int i = 0; i < 10000; i++) {
+                                    int next_count = counted + latency_pool.get(i);
+                                    if (counted < n_queries/2 && next_count >= n_queries/2)
+                                        System.out.println("median: " + (float)i/10 + " ms");
+                                    if (counted < n_queries*0.95 && next_count >= n_queries*0.95)
+                                        System.out.println("0.95: " + (float)i/10 + " ms");
+                                    counted = next_count;
+                                }
+                                System.out.println("overall: " +  counted );
+
                                 request_cur_thread.changeterm("KANWU");
                                 //reg.processMessageReceived(request_cur_thread, channel);
                                 //reg_cur.processMessageReceived(request_cur_thread, channel);   // channel?
